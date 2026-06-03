@@ -1590,6 +1590,59 @@ kbd {
   display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
 }
 
+
+/* ── Incoming tasks banner ── */
+.incoming-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--green-dim); border: 1px solid var(--green);
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+  cursor: pointer; transition: background 0.15s;
+}
+.incoming-banner:hover { background: var(--green-pale); }
+.incoming-banner-text {
+  flex: 1; font-size: 13px; font-weight: 500; color: var(--green);
+}
+.incoming-banner-sub {
+  font-size: 11px; font-weight: 400; color: var(--text2); margin-left: 6px;
+}
+.incoming-banner-btn {
+  background: var(--green); color: #fff;
+  border: none; border-radius: 6px; padding: 5px 12px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.incoming-banner-btn:hover { opacity: 0.88; }
+.incoming-dismiss {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.incoming-dismiss:hover { color: var(--text); }
+
+/* Incoming item rows in modal */
+.incoming-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.incoming-item:first-child { border-top: none; }
+.incoming-item-info { min-width: 0; }
+.incoming-item-title {
+  font-size: 13px; font-weight: 500; color: var(--text);
+  margin-bottom: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.incoming-item-meta {
+  font-size: 11px; color: var(--text3); display: flex; gap: 8px; flex-wrap: wrap;
+}
+.incoming-proj-sel {
+  font-size: 11px; padding: 3px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text); min-width: 120px;
+}
+
 </style>
 </head>
 <body>
@@ -1832,6 +1885,32 @@ kbd {
   </div>
 </div>
 
+
+<!-- INCOMING TASKS MODAL -->
+<div class="modal-overlay hidden" id="incoming-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right:6px;vertical-align:-2px">
+          <path d="M8 1v10M4 7l4 4 4-4" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="1" y="13" width="14" height="2" rx="1" fill="var(--green)"/>
+        </svg>
+        Incoming tasks from Groundwork
+      </div>
+      <button class="modal-close" onclick="dismissIncoming()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text2);margin:0 0 14px">
+        Review and assign a project before importing. Tasks default to Q2 (Important, not urgent).
+      </p>
+      <div id="incoming-list"></div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="dismissIncoming()">Dismiss all</button>
+      <button class="btn-primary"   onclick="importSelectedIncoming()">Import selected</button>
+    </div>
+  </div>
+</div>
 
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay hidden" id="settings-modal">
@@ -2116,6 +2195,7 @@ function load() {
   applyCustomQLabels();
   applyDarkMode();
   checkCarryForward();
+  checkIncoming();
 }
 
 function save() {
@@ -2344,7 +2424,7 @@ function renderToday() {
   }
   if (!poolHtml) poolHtml = `<div class='pool-empty-msg'>All clear &#10003;</div>`;
   const poolTotal = poolAll.length;
-  let h = renderCarryForward() + `<div class="view-header">
+  let h = renderIncomingBanner() + renderCarryForward() + `<div class="view-header">
     <div class="view-title">Today</div>
     <div class="view-subtitle">${esc(dateStr)}</div>
     <div class="view-header-right">${selBtn}</div>
@@ -2476,7 +2556,7 @@ function renderMatrix() {
   const gridClass  = exp ? 'matrix-grid matrix-grid-solo' : 'matrix-grid';
   const gridCells  = exp ? cell(exp) : `${cell('Q1')}${cell('Q2')}${cell('Q3')}${cell('Q4')}`;
 
-  return `<div class="view-header">
+  return renderIncomingBanner() + `<div class="view-header">
     <div class="view-title">Eisenhower Matrix</div>
     <div class="view-subtitle">Prioritize by urgency &amp; importance</div>
   </div>
@@ -2519,7 +2599,7 @@ function renderAll() {
   S.projects.forEach(p=>{byProj[p.id]=[];});
   tasks.forEach(t=>{ if (!byProj[t.projectId]) byProj[t.projectId]=[]; byProj[t.projectId].push(t); });
   const qOrd = {Q1:0,Q2:1,Q3:2,Q4:3};
-  let h = `<div class="view-header">
+  let h = renderIncomingBanner() + `<div class="view-header">
     <div class="view-title">All Tasks</div>
     <div class="view-subtitle">${tasks.length} task${tasks.length!==1?'s':''}</div>
     <div class="view-header-right">${S.bulkMode?'<button class="bulk-select-btn" onclick="exitBulkMode()">&#x2715; Cancel</button>':'<button class="bulk-select-btn" onclick="enterBulkMode()">&#9635; Select</button>'}</div>
@@ -3368,7 +3448,7 @@ function renderWeek() {
   const d0 = days[0], d6 = days[6];
   const rangeLabel = `${MNAMES[d0.getMonth()]} ${d0.getDate()} \u2013 ${MNAMES[d6.getMonth()]} ${d6.getDate()}, ${d6.getFullYear()}`;
 
-  let h = `<div class="view-header">
+  let h = renderIncomingBanner() + `<div class="view-header">
     <div class="view-title">Week</div>
     <div class="view-subtitle">Plan your week at a glance</div>
   </div>
@@ -4070,7 +4150,7 @@ function renderDashboard() {
   const totalCompleted = allT.filter(t=>t.completed||(t.completedDates||[]).length>0).length;
   const pct14 = burnData.reduce((s,d)=>s+d.n,0);
 
-  return `<div class="view-header">
+  return renderIncomingBanner() + `<div class="view-header">
     <div class="view-title">Dashboard</div>
     <div class="view-subtitle">${esc(fpLabel)} &middot; ${activeT.length} active task${activeT.length!==1?'s':''}</div>
   </div>
@@ -4125,6 +4205,151 @@ function renderDashboard() {
   </div>`;
 }
 // ── Work-week drag-and-drop ──────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  GROUNDWORK → BUSYWORK INCOMING TASKS
+// ─────────────────────────────────────────────────────────────
+let _incoming = [];  // parsed items waiting for review
+
+function checkIncoming() {
+  try {
+    const raw = localStorage.getItem('busywork_incoming');
+    if (!raw) { _incoming = []; return; }
+    const parsed = JSON.parse(raw);
+    // Accept array or {items:[...]} wrapper
+    const items = Array.isArray(parsed) ? parsed : (parsed.items || parsed.tasks || []);
+    _incoming = items.filter(Boolean).map((it, i) => ({
+      _id:       i,
+      _include:  true,
+      title:     it.title || it.action || it.text || '(untitled)',
+      dueDate:   it.dueDate || it.due || null,
+      owner:     it.owner || null,
+      source:    it.meeting || it.source || it.meetingTitle || null,
+      projectName: it.projectName || it.project || null,
+    }));
+  } catch(e) {
+    _incoming = [];
+  }
+}
+
+function openIncomingModal() {
+  if (!_incoming.length) return;
+  const list = document.getElementById('incoming-list');
+  if (!list) return;
+
+  list.innerHTML = _incoming.map(it => {
+    const projOpts = S.projects.map(p => {
+      // Try to match by name from Groundwork
+      const sel = it.projectName && p.name.toLowerCase().includes(it.projectName.toLowerCase())
+        ? 'selected' : '';
+      return `<option value="${p.id}" ${sel}>${esc(p.name)}</option>`;
+    }).join('');
+
+    const metaParts = [];
+    if (it.owner)   metaParts.push(`Owner: ${esc(it.owner)}`);
+    if (it.dueDate) metaParts.push(`Due: ${it.dueDate}`);
+    if (it.source)  metaParts.push(`From: ${esc(it.source)}`);
+
+    return `<div class="incoming-item" id="iitem-${it._id}">
+      <input type="checkbox" id="ichk-${it._id}" checked
+             style="margin-top:3px;cursor:pointer;accent-color:var(--green)"
+             onchange="_incoming[${it._id}]._include=this.checked">
+      <div class="incoming-item-info">
+        <div class="incoming-item-title" title="${esc(it.title)}">${esc(it.title)}</div>
+        <div class="incoming-item-meta">${metaParts.join(' &bull; ') || '&nbsp;'}</div>
+      </div>
+      <select class="incoming-proj-sel" id="iproj-${it._id}">
+        <option value="">— No project —</option>
+        ${projOpts}
+      </select>
+    </div>`;
+  }).join('');
+
+  document.getElementById('incoming-modal').classList.remove('hidden');
+}
+
+function importSelectedIncoming() {
+  const today = todayStr();
+  let count = 0;
+
+  _incoming.forEach(it => {
+    if (!it._include) return;
+    const projSel = document.getElementById(`iproj-${it._id}`);
+    const projectId = projSel ? (projSel.value || null) : null;
+
+    S.tasks.push(migrateTask({
+      id:            uid(),
+      title:         it.title,
+      projectId:     projectId || (S.projects[0]?.id || null),
+      urgent:        false,
+      important:     true,      // default to Q2
+      duration:      30,
+      phase:         'N/A',
+      isRecurring:   false,
+      recurDays:     [],
+      recurType:     'weekly',
+      recurInterval: 7,
+      recurStartDate:'',
+      recurMonthDay: 1,
+      recurMonthWeek:1,
+      recurMonthDow: 1,
+      dueDate:       it.dueDate || null,
+      notes:         it.source ? `Imported from Groundwork — ${it.source}` : 'Imported from Groundwork',
+      subtasks:      [],
+      completed:     false,
+      completedAt:   null,
+      completedDates:[],
+    }));
+    count++;
+  });
+
+  if (count) {
+    save();
+    checkCarryForward();
+    showToast(`${count} task${count!==1?'s':''} imported from Groundwork`);
+  }
+  localStorage.removeItem('busywork_incoming');
+  _incoming = [];
+  document.getElementById('incoming-modal').classList.add('hidden');
+  render();
+}
+
+function dismissIncoming() {
+  localStorage.removeItem('busywork_incoming');
+  _incoming = [];
+  document.getElementById('incoming-modal').classList.add('hidden');
+  render();
+}
+
+// Listen for Groundwork writing the key (same browser, cross-tab)
+window.addEventListener('storage', e => {
+  if (e.key === 'busywork_incoming' && e.newValue) {
+    checkIncoming();
+    render();                         // banner will appear
+    if (_incoming.length) openIncomingModal();
+  }
+});
+
+
+function renderIncomingBanner() {
+  if (!_incoming.length) return '';
+  const n = _incoming.length;
+  const sources = [...new Set(_incoming.map(i=>i.source).filter(Boolean))];
+  const sub = sources.length ? sources.slice(0,2).map(s=>esc(s)).join(', ') : 'Groundwork';
+  return `<div class="incoming-banner" onclick="openIncomingModal()">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M8 1v10M4 7l4 4 4-4" stroke="var(--green)" stroke-width="1.8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="1" y="13" width="14" height="2" rx="1" fill="var(--green)"/>
+    </svg>
+    <span class="incoming-banner-text">
+      ${n} incoming task${n!==1?'s':''} from Groundwork
+      <span class="incoming-banner-sub">${sub}</span>
+    </span>
+    <button class="incoming-banner-btn" onclick="event.stopPropagation();openIncomingModal()">Review &rarr;</button>
+    <button class="incoming-dismiss" onclick="event.stopPropagation();dismissIncoming()" title="Dismiss">&#10005;</button>
+  </div>`;
+}
+
 </script>
 
 <!-- FLOATING ACTION BUTTON -->
