@@ -3728,6 +3728,13 @@ function renderTrendsSection() {
 // ═══════════════════════════════════════
 //  SERVICE WORKER REGISTRATION
 // ═══════════════════════════════════════
+// ── Boot ────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  load();
+  render();
+});
+
+// ── Service worker ────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')

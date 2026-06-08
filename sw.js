@@ -1,18 +1,22 @@
 // ─────────────────────────────────────────────
-//  Fieldwork Service Worker
-//  Cache strategy:
-//    Same-origin assets → Cache-first, populate on miss
-//    Cross-origin (fonts) → Network-first, cache fallback
+//  Busywork Service Worker  v2
+//
+//  Strategy:
+//    index.html  → Network-first (always get latest app code)
+//    Other assets → Cache-first  (icons, manifest)
+//    Offline fallback → cached index.html
 // ─────────────────────────────────────────────
 
-const CACHE   = 'fieldwork-v1';
+const CACHE   = 'busywork-v2';
 const OFFLINE = './index.html';
 
 const PRECACHE = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon.svg'
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 // ── Install: pre-cache core assets ──────────
@@ -20,7 +24,8 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
       .then(cache => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+      // Do NOT call skipWaiting() — wait for existing tabs to close
+      // so we never hijack a live session mid-use.
   );
 });
 
@@ -31,21 +36,34 @@ self.addEventListener('activate', event => {
       .then(keys => Promise.all(
         keys.filter(k => k !== CACHE).map(k => caches.delete(k))
       ))
-      .then(() => self.clients.claim())
+    // Do NOT call clients.claim() — let current tabs finish naturally.
   );
 });
 
 // ── Fetch ────────────────────────────────────
 self.addEventListener('fetch', event => {
-  // Ignore non-GET and browser-extension requests
   if (event.request.method !== 'GET') return;
   if (!event.request.url.startsWith('http')) return;
 
   const url = new URL(event.request.url);
-  const isSameOrigin = url.origin === self.location.origin;
+  const isHTML = url.pathname.endsWith('.html') || url.pathname.endsWith('/');
 
-  if (isSameOrigin) {
-    // Cache-first for same-origin assets
+  if (isHTML) {
+    // Network-first for HTML: always try to get the freshest app code.
+    // Fall back to cache only when offline.
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE).then(c => c.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(OFFLINE))
+    );
+  } else {
+    // Cache-first for static assets (icons, manifest).
     event.respondWith(
       caches.match(event.request).then(cached => {
         if (cached) return cached;
@@ -60,29 +78,16 @@ self.addEventListener('fetch', event => {
           .catch(() => caches.match(OFFLINE));
       })
     );
-  } else {
-    // Network-first for cross-origin (Google Fonts, etc.)
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE).then(c => c.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
   }
 });
 
-// ── Notification click — focus or open the app ────────
+// ── Notification click ───────────────────────
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(list => {
-        const existing = list.find(c => c.url.includes('fieldwork') || c.url.endsWith('/'));
+        const existing = list.find(c => c.url.includes('busywork') || c.url.endsWith('/'));
         if (existing) return existing.focus();
         return clients.openWindow('./');
       })
